@@ -1,0 +1,26 @@
+name: MaceLimiter
+version: 1.0.0
+main: com.example.macelimiter.MaceLimiter
+api-version: '1.21'
+author: SeniorJavaDev
+description: Giới hạn số lượng Mace tồn tại trên toàn server (event-driven, PDC-based).
+folia-supported: false
+
+commands:
+  macelimit:
+    description: Xem số lượng Mace hiện tại trên server.
+    usage: /macelimit
+    permission: macelimiter.admin
+  macereset:
+    description: Reset toàn bộ dữ liệu Mace về 0.
+    usage: /macereset
+    permission: macelimiter.admin
+  macesync:
+    description: Đồng bộ dữ liệu Mace với thực tế (quét player + chunk).
+    usage: /macesync
+    permission: macelimiter.admin
+
+permissions:
+  macelimiter.admin:
+    description: Quyền quản trị plugin MaceLimiter.
+    default: op
