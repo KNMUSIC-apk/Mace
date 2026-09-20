@@ -97,7 +97,7 @@
 
         <plugins>
 
-            <!-- ---------- Compiler ---------- -->
+            <!-- ========== Compiler ========== -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
@@ -110,7 +110,7 @@
                 </configuration>
             </plugin>
 
-            <!-- ---------- Shade Plugin (fat JAR nếu có lib ngoài) ---------- -->
+            <!-- ========== Shade Plugin (fat JAR nếu có lib ngoài) ========== -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-shade-plugin</artifactId>
