@@ -1,0 +1,20 @@
+# =========================================================
+#  MaceLimiter - Configuration
+# =========================================================
+
+# Số lượng Mace tối đa được tồn tại trên server.
+# Khi đạt giới hạn, người chơi không thể craft thêm Mace.
+max-maces: 8
+
+# Tin nhắn (mã màu legacy: &a &c &e &l &o &n ...).
+# Placeholders khả dụng:
+#   %current%, %max%   -> dùng trong limit-reached / limit-info
+#   %fake%, %tagged%, %orphans%, %current%, %max%  -> dùng trong sync-success
+messages:
+  no-permission: "&cBạn không có quyền sử dụng lệnh này."
+  limit-reached: "&cServer đã đạt giới hạn Mace! &7(&e%current%&7/&e%max%&7)"
+  limit-info: "&eHiện đang có &c%current%&e/&c%max% &eMace trên server."
+  reset-success: "&aĐã reset toàn bộ dữ liệu Mace về 0. Mace cũ sẽ tự động bị xóa khi chạm vào."
+  sync-start: "&7Đang đồng bộ dữ liệu Mace, vui lòng đợi..."
+  sync-success: "&aĐồng bộ xong! &7Xóa &c%fake% &7UUID ảo, cấp PDC cho &a%tagged% &7Mace, phát hiện &e%orphans% &7Mace mồ côi. &7Hiện có &c%current%&7/&c%max%&7."
+  invalid-mace-removed: "&cMace không hợp lệ đã bị xóa khỏi túi đồ của bạn!"
