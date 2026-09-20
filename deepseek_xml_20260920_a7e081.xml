@@ -1,0 +1,157 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                             https://maven.apache.org/xsd/maven-4.0.0.xsd">
+
+    <modelVersion>4.0.0</modelVersion>
+
+    <!-- ============================================================
+         THÔNG TIN PROJECT
+         ============================================================ -->
+    <groupId>com.example</groupId>
+    <artifactId>MaceLimiter</artifactId>
+    <version>1.0.0</version>
+    <packaging>jar</packaging>
+
+    <name>MaceLimiter</name>
+    <description>Giới hạn số lượng Mace tồn tại trên toàn server (event-driven, PDC-based).</description>
+
+    <!-- ============================================================
+         PROPERTIES
+         ============================================================ -->
+    <properties>
+        <java.version>21</java.version>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+
+        <!-- Đổi sang 1.20.6-R0.1-SNAPSHOT nếu bạn muốn build cho đúng 1.20.6 -->
+        <paper.version>1.21.1-R0.1-SNAPSHOT</paper.version>
+    </properties>
+
+    <!-- ============================================================
+         REPOSITORIES — PaperMC
+         ============================================================ -->
+    <repositories>
+        <repository>
+            <id>papermc</id>
+            <url>https://repo.papermc.io/repository/maven-public/</url>
+        </repository>
+
+        <!-- Nếu bạn muốn dùng Spigot thuần thay vì Paper, bỏ comment block dưới
+        <repository>
+            <id>spigot-repo</id>
+            <url>https://hub.spigotmc.org/nexus/content/repositories/snapshots/</url>
+        </repository>
+        -->
+    </repositories>
+
+    <!-- ============================================================
+         DEPENDENCIES
+         ============================================================ -->
+    <dependencies>
+        <!-- Paper API — provide scope vì server đã có sẵn -->
+        <dependency>
+            <groupId>io.papermc.paper</groupId>
+            <artifactId>paper-api</artifactId>
+            <version>${paper.version}</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- Annotation @NotNull / @Nullable -->
+        <dependency>
+            <groupId>org.jetbrains</groupId>
+            <artifactId>annotations</artifactId>
+            <version>24.1.0</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- ============================================================
+             THÊM THƯ VIỆN BÊN NGOÀI Ở ĐÂY (nếu cần)
+             Ví dụ:
+             <dependency>
+                 <groupId>com.google.code.gson</groupId>
+                 <artifactId>gson</artifactId>
+                 <version>2.11.0</version>
+             </dependency>
+             ============================================================ -->
+    </dependencies>
+
+    <!-- ============================================================
+         BUILD
+         ============================================================ -->
+    <build>
+        <!-- Tên file JAR cuối cùng -->
+        <finalName>${project.name}-${project.version}</finalName>
+
+        <!-- Đảm bảo resource được copy (config.yml, plugin.yml, ...) -->
+        <resources>
+            <resource>
+                <directory>src/main/resources</directory>
+                <filtering>true</filtering>
+                <includes>
+                    <include>**/*.yml</include>
+                </includes>
+            </resource>
+        </resources>
+
+        <plugins>
+
+            <!-- ---------- Compiler ---------- -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.13.0</version>
+                <configuration>
+                    <source>${java.version}</source>
+                    <target>${java.version}</target>
+                    <release>${java.version}</release>
+                    <encoding>UTF-8</encoding>
+                </configuration>
+            </plugin>
+
+            <!-- ---------- Shade Plugin (fat JAR nếu có lib ngoài) ---------- -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-shade-plugin</artifactId>
+                <version>3.6.0</version>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>shade</goal>
+                        </goals>
+                        <configuration>
+                            <createDependencyReducedPom>false</createDependencyReducedPom>
+                            <minimizeJar>false</minimizeJar>
+
+                            <!-- Relocate để tránh xung đột với plugin khác -->
+                            <!-- Ví dụ relocate gson nếu bạn có dùng:
+                            <relocations>
+                                <relocation>
+                                    <pattern>com.google.gson</pattern>
+                                    <shadedPattern>com.example.macelimiter.libs.gson</shadedPattern>
+                                </relocation>
+                            </relocations>
+                            -->
+
+                            <filters>
+                                <filter>
+                                    <artifact>*:*</artifact>
+                                    <excludes>
+                                        <exclude>META-INF/*.SF</exclude>
+                                        <exclude>META-INF/*.DSA</exclude>
+                                        <exclude>META-INF/*.RSA</exclude>
+                                        <exclude>module-info.class</exclude>
+                                    </excludes>
+                                </filter>
+                            </filters>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+        </plugins>
+    </build>
+
+</project>
