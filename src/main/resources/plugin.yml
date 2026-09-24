@@ -23,6 +23,10 @@ commands:
     description: Lệnh quản trị chung của MaceLimiter.
     usage: /mace reload
     permission: macelimiter.admin
+  macescan:
+    description: Force scan 1 player cụ thể (inventory + ender chest).
+    usage: /macescan <player>
+    permission: macelimiter.admin
 
 permissions:
   macelimiter.admin:
