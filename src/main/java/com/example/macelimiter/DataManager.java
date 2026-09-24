@@ -36,13 +36,16 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class DataManager {
 
-    /**
-     * Kết quả xử lý 1 ItemStack Mace.
-     */
     public enum MaceAction {
         NONE,       // Không thay đổi gì
-        ADOPTED,    // Đã gắn PDC + thêm vào data (caller cần write-back vào inventory)
+        ADOPTED,    // Đã gắn PDC + thêm vào data (caller cần write-back)
         DELETED     // Mace orphan, đã set amount = 0 (caller cần write-back)
+    }
+
+    /** Kết quả scan 1 inventory. */
+    public static class ScanResult {
+        public int adopted = 0;
+        public int deleted = 0;
     }
 
     private final MaceLimiter plugin;
@@ -85,9 +88,7 @@ public class DataManager {
             if (s == null || s.isEmpty()) continue;
             try {
                 maces.add(UUID.fromString(s));
-            } catch (IllegalArgumentException ignored) {
-                // Bỏ qua UUID hỏng trong file
-            }
+            } catch (IllegalArgumentException ignored) {}
         }
     }
 
@@ -127,7 +128,7 @@ public class DataManager {
     }
 
     // ============================================================
-    // PDC HELPERS — Null-safe tuyệt đối
+    // PDC HELPERS — Null-safe
     // ============================================================
 
     public UUID extractMaceUUID(ItemStack stack) {
@@ -175,17 +176,9 @@ public class DataManager {
     }
 
     // ============================================================
-    // CORE LOGIC: XỬ LÝ 1 MACE (ADOPT / DELETE / KEEP)
+    // CORE: XỬ LÝ 1 MACE
     // ============================================================
 
-    /**
-     * Xử lý 1 ItemStack Mace:
-     *  - Untagged → ADOPT (sinh UUID, gắn PDC, thêm vào data). KHÔNG check max.
-     *  - Tagged + UUID không trong data → DELETE (set amount 0).
-     *  - Tagged + UUID trong data → NONE.
-     *
-     * Caller PHẢI write-back ItemStack vào inventory nếu kết quả != NONE.
-     */
     public MaceAction processMace(ItemStack stack) {
         if (stack == null || stack.getType() != Material.MACE) return MaceAction.NONE;
         if (stack.getAmount() <= 0) return MaceAction.NONE;
@@ -193,19 +186,18 @@ public class DataManager {
         UUID uuid = extractMaceUUID(stack);
 
         if (uuid == null) {
-            // ---- Untagged → ADOPT ----
+            // Untagged → ADOPT
             UUID newUuid = UUID.randomUUID();
             if (tagMace(stack, newUuid)) {
                 add(newUuid);
                 return MaceAction.ADOPTED;
             }
-            // Không tag được → xóa để tránh Mace vô chủ exploitable
             stack.setAmount(0);
             return MaceAction.DELETED;
         }
 
         if (!maces.contains(uuid)) {
-            // ---- Orphan (từ /macereset hoặc plugin khác gỡ data) ----
+            // Orphan (từ /macereset hoặc plugin khác)
             stack.setAmount(0);
             return MaceAction.DELETED;
         }
@@ -214,30 +206,60 @@ public class DataManager {
     }
 
     // ============================================================
-    // SYNC
+    // PROCESS 1 INVENTORY — Dùng chung cho Listener & Command
     // ============================================================
 
     /**
-     * Quét người chơi online + chunk đang load.
+     * Duyệt toàn bộ inventory, adopt Mace untagged + xóa Mace orphan.
+     * Write-back trực tiếp vào inventory.
      *
-     * @param removeFake  true  → xóa UUID ảo (dùng cho /macesync)
-     *                    false → chỉ auto-adopt (dùng khi plugin enable —
-     *                            tránh xóa nhầm UUID của Mace nằm trong chunk chưa load)
+     * @return ScanResult {adopted, deleted}
      */
+    public ScanResult processInventory(Inventory inv) {
+        ScanResult result = new ScanResult();
+        if (inv == null) return result;
+
+        int size;
+        try { size = inv.getSize(); } catch (Throwable t) { return result; }
+
+        for (int i = 0; i < size; i++) {
+            ItemStack stack;
+            try { stack = inv.getItem(i); } catch (Throwable t) { continue; }
+            if (stack == null || stack.getType() != Material.MACE) continue;
+
+            MaceAction action = processMace(stack);
+            switch (action) {
+                case ADOPTED -> {
+                    try { inv.setItem(i, stack); } catch (Throwable ignored) {}
+                    result.adopted++;
+                }
+                case DELETED -> {
+                    try { inv.setItem(i, null); } catch (Throwable ignored) {}
+                    result.deleted++;
+                }
+                default -> {}
+            }
+        }
+        return result;
+    }
+
+    // ============================================================
+    // SYNC TOÀN SERVER
+    // ============================================================
+
     public SyncResult syncWithServer(boolean removeFake) {
         SyncResult result = new SyncResult();
         Set<UUID> found = new HashSet<>();
 
-        // ---- 1. Người chơi online ----
+        // 1. Player online
         for (Player p : Bukkit.getOnlinePlayers()) {
             scanInventory(p.getInventory(), found, result);
             scanInventory(p.getEnderChest(), found, result);
         }
 
-        // ---- 2. Chunk đang load ----
+        // 2. Chunk đang load
         for (World w : Bukkit.getWorlds()) {
             for (Chunk c : w.getLoadedChunks()) {
-                // Item entity (rơi dưới đất)
                 for (Entity e : c.getEntities()) {
                     if (e instanceof Item itemEntity) {
                         ItemStack stack = itemEntity.getItemStack();
@@ -251,7 +273,6 @@ public class DataManager {
                         }
                     }
                 }
-                // Container (chest, barrel, shulker, hopper, furnace, ...)
                 for (BlockState state : c.getTileEntities()) {
                     if (state instanceof Container container) {
                         scanInventory(container.getInventory(), found, result);
@@ -260,7 +281,7 @@ public class DataManager {
             }
         }
 
-        // ---- 3. Loại bỏ UUID ảo (chỉ khi removeFake) ----
+        // 3. Loại bỏ UUID ảo (chỉ khi removeFake)
         if (removeFake) {
             for (UUID u : new ArrayList<>(maces)) {
                 if (!found.contains(u)) {
@@ -274,7 +295,6 @@ public class DataManager {
         return result;
     }
 
-    /** Backward-compat: mặc định là full cleanup. */
     public SyncResult syncWithServer() {
         return syncWithServer(true);
     }
@@ -292,26 +312,20 @@ public class DataManager {
         }
     }
 
-    /**
-     * @return true nếu stack bị thay đổi → caller cần write-back.
-     */
     private boolean processStack(ItemStack stack, Set<UUID> found, SyncResult result) {
         if (stack == null || stack.getType() == Material.AIR || stack.getAmount() <= 0) return false;
 
         boolean changed = false;
 
-        // ---- Mace ----
         if (stack.getType() == Material.MACE) {
             UUID uuid = extractMaceUUID(stack);
             if (uuid != null) {
                 if (maces.contains(uuid)) {
                     found.add(uuid);
                 } else {
-                    // Orphan — chờ player chạm → xóa
                     result.orphans++;
                 }
             } else {
-                // Untagged → auto-adopt
                 UUID newUuid = UUID.randomUUID();
                 if (tagMace(stack, newUuid)) {
                     maces.add(newUuid);
@@ -322,7 +336,6 @@ public class DataManager {
             }
         }
 
-        // ---- Bundle (chứa Mace) ----
         if (stack.getType() == Material.BUNDLE) {
             ItemMeta meta = stack.getItemMeta();
             if (meta instanceof BundleMeta bm) {
@@ -344,13 +357,9 @@ public class DataManager {
         return changed;
     }
 
-    // ============================================================
-    // KẾT QUẢ SYNC
-    // ============================================================
-
     public static class SyncResult {
-        public int fakeRemoved = 0;   // UUID ảo bị xóa khỏi data.yml
-        public int adopted = 0;       // Mace untagged đã được cấp PDC + tính vào data
-        public int orphans = 0;       // Mace có PDC nhưng UUID không trong data
+        public int fakeRemoved = 0;
+        public int adopted = 0;
+        public int orphans = 0;
     }
 }
