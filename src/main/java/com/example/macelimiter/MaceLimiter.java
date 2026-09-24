@@ -16,22 +16,17 @@ public final class MaceLimiter extends JavaPlugin {
     public void onEnable() {
         instance = this;
 
-        // Tạo config.yml mặc định nếu chưa có
         saveDefaultConfig();
 
-        // NamespacedKey dùng để gắn UUID vào PDC của từng ItemStack Mace
         this.maceKey = new NamespacedKey(this, "mace_uuid");
 
-        // Load data.yml -> HashSet<UUID>
         this.dataManager = new DataManager(this);
         this.dataManager.load();
 
-        // Đăng ký listener
         getServer().getPluginManager().registerEvents(new MaceListener(this), this);
 
-        // Đăng ký commands
         CommandHandler handler = new CommandHandler(this);
-        for (String name : new String[]{"macelimit", "macereset", "macesync"}) {
+        for (String name : new String[]{"macelimit", "macereset", "macesync", "mace"}) {
             PluginCommand cmd = getCommand(name);
             if (cmd != null) {
                 cmd.setExecutor(handler);
@@ -39,13 +34,27 @@ public final class MaceLimiter extends JavaPlugin {
             }
         }
 
+        // ============================================================
+        // STARTUP SCAN — Auto-adopt Mace có sẵn trên server
+        // Chạy sau 40 ticks (2s) để chắc chắn world + player đã load xong.
+        // removeFake = false → KHÔNG xóa UUID (tránh xóa nhầm Mace
+        // trong chunk chưa load).
+        // ============================================================
+        getServer().getScheduler().runTaskLater(this, () -> {
+            DataManager.SyncResult r = dataManager.syncWithServer(false);
+            if (r.adopted > 0) {
+                getLogger().info("[Startup Scan] Đã auto-adopt " + r.adopted
+                        + " Mace có sẵn. Tổng hiện tại: "
+                        + dataManager.getCount() + "/" + getMaxMaces());
+            }
+        }, 40L);
+
         getLogger().info("MaceLimiter đã bật. Hiện có "
                 + dataManager.getCount() + "/" + getMaxMaces() + " Mace.");
     }
 
     @Override
     public void onDisable() {
-        // Save lần cuối — bảo vệ dữ liệu khi /reload hoặc tắt server
         if (dataManager != null) {
             dataManager.save();
         }
@@ -64,10 +73,6 @@ public final class MaceLimiter extends JavaPlugin {
         return Math.max(0, getConfig().getInt("max-maces", 8));
     }
 
-    /**
-     * Lấy message từ config, dịch mã màu legacy, thay placeholders.
-     * Cú pháp: getMessage("limit-reached", "%current%", "2", "%max%", "8")
-     */
     public String getMessage(String key, String... placeholders) {
         String raw = getConfig().getString("messages." + key,
                 "&c[Missing message: " + key + "]");
@@ -76,5 +81,9 @@ public final class MaceLimiter extends JavaPlugin {
             msg = msg.replace(placeholders[i], placeholders[i + 1]);
         }
         return msg;
+    }
+
+    public void reloadPluginConfig() {
+        reloadConfig();
     }
 }
