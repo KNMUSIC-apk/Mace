@@ -1,12 +1,15 @@
 package com.example.macelimiter;
 
+import org.bukkit.Bukkit;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.TabCompleter;
+import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -59,6 +62,8 @@ public class CommandHandler implements CommandExecutor, TabCompleter {
                         "%max%",     String.valueOf(plugin.getMaxMaces())));
             }
 
+            case "macescan" -> handleMaceScan(sender, args);
+
             case "mace" -> handleMaceCommand(sender, args);
 
             default -> {
@@ -69,7 +74,37 @@ public class CommandHandler implements CommandExecutor, TabCompleter {
     }
 
     /**
-     * Xử lý /mace <subcommand>.
+     * /macescan <player> — Force scan 1 player (inventory + ender chest).
+     */
+    private void handleMaceScan(CommandSender sender, String[] args) {
+        if (args.length < 1) {
+            sender.sendMessage(plugin.getMessage("usage-macescan"));
+            return;
+        }
+
+        Player target = Bukkit.getPlayerExact(args[0]);
+        if (target == null) {
+            sender.sendMessage(plugin.getMessage("player-not-found",
+                    "%player%", args[0]));
+            return;
+        }
+
+        DataManager.ScanResult r1 = plugin.getDataManager().processInventory(target.getInventory());
+        DataManager.ScanResult r2 = plugin.getDataManager().processInventory(target.getEnderChest());
+
+        int adopted = r1.adopted + r2.adopted;
+        int deleted = r1.deleted + r2.deleted;
+
+        sender.sendMessage(plugin.getMessage("scan-success",
+                "%player%",  target.getName(),
+                "%adopted%", String.valueOf(adopted),
+                "%deleted%", String.valueOf(deleted),
+                "%current%", String.valueOf(plugin.getDataManager().getCount()),
+                "%max%",     String.valueOf(plugin.getMaxMaces())));
+    }
+
+    /**
+     * /mace <subcommand>
      */
     private void handleMaceCommand(CommandSender sender, String[] args) {
         if (args.length == 0) {
@@ -99,11 +134,24 @@ public class CommandHandler implements CommandExecutor, TabCompleter {
                                                 @NotNull String[] args) {
         if (!sender.hasPermission(PERM)) return Collections.emptyList();
 
-        if (command.getName().equalsIgnoreCase("mace") && args.length == 1) {
+        String cmd = command.getName().toLowerCase();
+
+        if (cmd.equals("mace") && args.length == 1) {
             String partial = args[0].toLowerCase();
             return Stream.of("reload")
                     .filter(s -> s.startsWith(partial))
                     .collect(Collectors.toList());
+        }
+
+        if (cmd.equals("macescan") && args.length == 1) {
+            String partial = args[0].toLowerCase();
+            List<String> names = new ArrayList<>();
+            for (Player p : Bukkit.getOnlinePlayers()) {
+                if (p.getName().toLowerCase().startsWith(partial)) {
+                    names.add(p.getName());
+                }
+            }
+            return names;
         }
 
         return Collections.emptyList();
