@@ -6,16 +6,21 @@
 # Khi đạt giới hạn, người chơi không thể craft thêm Mace.
 #
 # LƯU Ý: max-maces CHỈ chặn craft. Plugin vẫn tự động adopt
-# (đếm) Mace có sẵn trên server dù vượt quá giới hạn — để phản
-# ánh đúng thực tế. Ví dụ: server có 12 Mace, max = 8 → count là
-# "12/8", craft bị chặn cho đến khi count giảm xuống < 8.
+# (đếm) Mace có sẵn trên server dù vượt quá giới hạn — để
+# phản ánh đúng thực tế.
 max-maces: 10
+
+# Bật để xem log debug chi tiết trong console.
+# Tắt khi plugin đã hoạt động ổn định.
+debug: false
 
 # Tin nhắn (mã màu legacy: &a &c &e &l &o &n ...).
 # Placeholders:
 #   %current%, %max%              -> limit-reached / limit-info
 #   %fake%, %adopted%, %orphans%  -> sync-success
 #   %max%                         -> reload-success
+#   %player%                      -> player-not-found / scan-success
+#   %adopted%, %deleted%          -> scan-success
 messages:
   no-permission: "&cBạn không có quyền sử dụng lệnh này."
   limit-reached: "&cServer đã đạt giới hạn Mace! &7(&e%current%&7/&e%max%&7)"
@@ -26,3 +31,6 @@ messages:
   invalid-mace-removed: "&cMace không hợp lệ đã bị xóa khỏi túi đồ của bạn!"
   reload-success: "&aĐã reload config.yml thành công! Giới hạn Mace hiện tại: &e%max%&a."
   usage-mace: "&eSử dụng: &c/mace reload &7- Reload lại file config.yml."
+  usage-macescan: "&eSử dụng: &c/macescan <player> &7- Quét inventory 1 player."
+  player-not-found: "&cKhông tìm thấy player &e%player% &choặc họ không online."
+  scan-success: "&aĐã quét &e%player%&a: nhận &a%adopted% &aMace, xóa &c%deleted% &aMace rác. Hiện có &c%current%&a/&c%max%&a."
