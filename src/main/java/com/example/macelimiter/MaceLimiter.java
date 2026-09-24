@@ -26,7 +26,7 @@ public final class MaceLimiter extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new MaceListener(this), this);
 
         CommandHandler handler = new CommandHandler(this);
-        for (String name : new String[]{"macelimit", "macereset", "macesync", "mace"}) {
+        for (String name : new String[]{"macelimit", "macereset", "macesync", "mace", "macescan"}) {
             PluginCommand cmd = getCommand(name);
             if (cmd != null) {
                 cmd.setExecutor(handler);
@@ -36,17 +36,15 @@ public final class MaceLimiter extends JavaPlugin {
 
         // ============================================================
         // STARTUP SCAN — Auto-adopt Mace có sẵn trên server
-        // Chạy sau 40 ticks (2s) để chắc chắn world + player đã load xong.
+        // Chạy sau 40 ticks (2s) để world + player load xong.
         // removeFake = false → KHÔNG xóa UUID (tránh xóa nhầm Mace
         // trong chunk chưa load).
         // ============================================================
         getServer().getScheduler().runTaskLater(this, () -> {
             DataManager.SyncResult r = dataManager.syncWithServer(false);
-            if (r.adopted > 0) {
-                getLogger().info("[Startup Scan] Đã auto-adopt " + r.adopted
-                        + " Mace có sẵn. Tổng hiện tại: "
-                        + dataManager.getCount() + "/" + getMaxMaces());
-            }
+            getLogger().info("[Startup Scan] Quét xong. Adopt: " + r.adopted
+                    + ", Orphan: " + r.orphans
+                    + ", Tổng hiện tại: " + dataManager.getCount() + "/" + getMaxMaces());
         }, 40L);
 
         getLogger().info("MaceLimiter đã bật. Hiện có "
@@ -73,6 +71,10 @@ public final class MaceLimiter extends JavaPlugin {
         return Math.max(0, getConfig().getInt("max-maces", 8));
     }
 
+    public boolean isDebug() {
+        return getConfig().getBoolean("debug", false);
+    }
+
     public String getMessage(String key, String... placeholders) {
         String raw = getConfig().getString("messages." + key,
                 "&c[Missing message: " + key + "]");
@@ -85,5 +87,10 @@ public final class MaceLimiter extends JavaPlugin {
 
     public void reloadPluginConfig() {
         reloadConfig();
+    }
+
+    /** In log debug nếu debug = true trong config.yml. */
+    public void debug(String msg) {
+        if (isDebug()) getLogger().info("[DEBUG] " + msg);
     }
 }
