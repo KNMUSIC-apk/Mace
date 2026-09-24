@@ -9,6 +9,8 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public class CommandHandler implements CommandExecutor, TabCompleter {
 
@@ -47,15 +49,17 @@ public class CommandHandler implements CommandExecutor, TabCompleter {
 
             case "macesync" -> {
                 sender.sendMessage(plugin.getMessage("sync-start"));
-                DataManager.SyncResult r = plugin.getDataManager().syncWithServer();
+                DataManager.SyncResult r = plugin.getDataManager().syncWithServer(true);
                 int cur = plugin.getDataManager().getCount();
                 sender.sendMessage(plugin.getMessage("sync-success",
-                        "%fake%", String.valueOf(r.fakeRemoved),
-                        "%tagged%", String.valueOf(r.tagged),
+                        "%fake%",    String.valueOf(r.fakeRemoved),
+                        "%adopted%", String.valueOf(r.adopted),
                         "%orphans%", String.valueOf(r.orphans),
                         "%current%", String.valueOf(cur),
-                        "%max%", String.valueOf(plugin.getMaxMaces())));
+                        "%max%",     String.valueOf(plugin.getMaxMaces())));
             }
+
+            case "mace" -> handleMaceCommand(sender, args);
 
             default -> {
                 return false;
@@ -64,11 +68,44 @@ public class CommandHandler implements CommandExecutor, TabCompleter {
         return true;
     }
 
+    /**
+     * Xử lý /mace <subcommand>.
+     */
+    private void handleMaceCommand(CommandSender sender, String[] args) {
+        if (args.length == 0) {
+            sender.sendMessage(plugin.getMessage("usage-mace"));
+            return;
+        }
+
+        switch (args[0].toLowerCase()) {
+            case "reload" -> {
+                plugin.reloadPluginConfig();
+                sender.sendMessage(plugin.getMessage("reload-success",
+                        "%max%", String.valueOf(plugin.getMaxMaces())));
+                plugin.getLogger().info(sender.getName() + " đã reload config.yml.");
+            }
+            default -> sender.sendMessage(plugin.getMessage("usage-mace"));
+        }
+    }
+
+    // ============================================================
+    // TAB COMPLETER
+    // ============================================================
+
     @Override
     public @Nullable List<String> onTabComplete(@NotNull CommandSender sender,
                                                 @NotNull Command command,
                                                 @NotNull String alias,
                                                 @NotNull String[] args) {
+        if (!sender.hasPermission(PERM)) return Collections.emptyList();
+
+        if (command.getName().equalsIgnoreCase("mace") && args.length == 1) {
+            String partial = args[0].toLowerCase();
+            return Stream.of("reload")
+                    .filter(s -> s.startsWith(partial))
+                    .collect(Collectors.toList());
+        }
+
         return Collections.emptyList();
     }
 }
