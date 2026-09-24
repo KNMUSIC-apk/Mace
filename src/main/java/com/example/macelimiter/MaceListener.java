@@ -10,21 +10,20 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.ItemDespawnEvent;
 import org.bukkit.event.inventory.CraftItemEvent;
+import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.inventory.InventoryOpenEvent;
 import org.bukkit.event.inventory.PrepareItemCraftEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerItemHeldEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.inventory.CraftingInventory;
 import org.bukkit.inventory.EquipmentSlot;
+import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
 
 import java.util.UUID;
 
-/**
- * Toàn bộ logic plugin chạy theo event. Không có task định kỳ (ngoại trừ
- * 1-shot startup scan + 1-shot join scan).
- */
 public class MaceListener implements Listener {
 
     private final MaceLimiter plugin;
@@ -91,6 +90,8 @@ public class MaceListener implements Listener {
             try { inv.setResult(tagged); } catch (Throwable ignored) {}
 
             data.add(uuid);
+            plugin.debug("Craft Mace cho " + player.getName()
+                    + " → count = " + data.getCount() + "/" + max);
 
             if (e.isShiftClick() && data.getCount() > max) {
                 e.setCancelled(true);
@@ -103,7 +104,7 @@ public class MaceListener implements Listener {
     }
 
     // ============================================================
-    // 2. ITEM BỊ PHÁ HỦY (lava / fire / explosion / cactus / void)
+    // 2. ITEM DAMAGE / DESPAWN
     // ============================================================
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
@@ -120,23 +121,23 @@ public class MaceListener implements Listener {
 
         if (e.getFinalDamage() >= health) {
             data.remove(uuid);
+            plugin.debug("Remove Mace (damage event) → count = " + data.getCount());
         }
     }
-
-    // ============================================================
-    // 3. DESPAWN TỰ NHIÊN
-    // ============================================================
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onItemDespawn(ItemDespawnEvent e) {
         ItemStack stack;
         try { stack = e.getEntity().getItemStack(); } catch (Throwable t) { return; }
         UUID uuid = data.extractMaceUUID(stack);
-        if (uuid != null) data.remove(uuid);
+        if (uuid != null) {
+            data.remove(uuid);
+            plugin.debug("Remove Mace (despawn) → count = " + data.getCount());
+        }
     }
 
     // ============================================================
-    // 4. VALIDATE / ADOPT MACE TRÊN NGƯỜI CHƠI
+    // 3. HELD / INTERACT
     // ============================================================
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
@@ -152,7 +153,10 @@ public class MaceListener implements Listener {
 
         DataManager.MaceAction action = data.processMace(item);
         switch (action) {
-            case ADOPTED -> inv.setItem(hand, item);
+            case ADOPTED -> {
+                inv.setItem(hand, item);
+                plugin.debug(player.getName() + " → Adopt Mace (onInteract)");
+            }
             case DELETED -> {
                 inv.setItem(hand, null);
                 player.sendMessage(plugin.getMessage("invalid-mace-removed"));
@@ -170,7 +174,10 @@ public class MaceListener implements Listener {
 
         DataManager.MaceAction action = data.processMace(item);
         switch (action) {
-            case ADOPTED -> inv.setItem(e.getNewSlot(), item);
+            case ADOPTED -> {
+                inv.setItem(e.getNewSlot(), item);
+                plugin.debug(player.getName() + " → Adopt Mace (onItemHeld)");
+            }
             case DELETED -> {
                 inv.setItem(e.getNewSlot(), null);
                 player.sendMessage(plugin.getMessage("invalid-mace-removed"));
@@ -179,50 +186,91 @@ public class MaceListener implements Listener {
         }
     }
 
+    // ============================================================
+    // 4. JOIN — Delay 10 ticks cho chắc
+    // ============================================================
+
     @EventHandler
     public void onJoin(PlayerJoinEvent e) {
         Player p = e.getPlayer();
-        // Delay 1 tick để inventory chắc chắn đã load
         Bukkit.getScheduler().runTaskLater(plugin, () -> {
             if (!p.isOnline()) return;
-            processInventory(p.getInventory(), p);
-            processInventory(p.getEnderChest(), p);
-        }, 1L);
+
+            DataManager.ScanResult r1 = data.processInventory(p.getInventory());
+            DataManager.ScanResult r2 = data.processInventory(p.getEnderChest());
+
+            int totalAdopted = r1.adopted + r2.adopted;
+            int totalDeleted = r1.deleted + r2.deleted;
+
+            if (totalAdopted > 0) {
+                plugin.debug(p.getName() + " → Adopt " + totalAdopted + " Mace (onJoin)");
+            }
+            if (totalDeleted > 0) {
+                p.sendMessage(plugin.getMessage("invalid-mace-removed"));
+            }
+        }, 10L);
     }
 
     // ============================================================
-    // HELPERS
+    // 5. INVENTORY OPEN — Adopt khi mở chest/shulker/balo
     // ============================================================
 
-    /**
-     * Duyệt toàn bộ inventory, xử lý Mace untagged (adopt)
-     * và Mace orphan (delete).
-     */
-    private void processInventory(org.bukkit.inventory.Inventory inv, Player notify) {
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onInventoryOpen(InventoryOpenEvent e) {
+        if (!(e.getPlayer() instanceof Player p)) return;
+
+        Inventory inv = e.getInventory();
         if (inv == null) return;
-        int size;
-        try { size = inv.getSize(); } catch (Throwable t) { return; }
 
-        boolean removedSomething = false;
+        DataManager.ScanResult r = data.processInventory(inv);
+        if (r.adopted > 0) {
+            plugin.debug(p.getName() + " → Adopt " + r.adopted + " Mace (onInventoryOpen)");
+        }
+        if (r.deleted > 0) {
+            p.sendMessage(plugin.getMessage("invalid-mace-removed"));
+        }
+    }
 
-        for (int i = 0; i < size; i++) {
-            ItemStack stack;
-            try { stack = inv.getItem(i); } catch (Throwable t) { continue; }
-            if (stack == null || stack.getType() != Material.MACE) continue;
+    // ============================================================
+    // 6. INVENTORY CLICK — Adopt khi click slot / cursor
+    // ============================================================
 
-            DataManager.MaceAction action = data.processMace(stack);
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onInventoryClick(InventoryClickEvent e) {
+        if (!(e.getWhoClicked() instanceof Player p)) return;
+
+        // Item ở slot click
+        ItemStack slotItem = e.getCurrentItem();
+        if (slotItem != null && slotItem.getType() == Material.MACE) {
+            DataManager.MaceAction action = data.processMace(slotItem);
             switch (action) {
-                case ADOPTED -> inv.setItem(i, stack);
+                case ADOPTED -> {
+                    e.setCurrentItem(slotItem);
+                    plugin.debug(p.getName() + " → Adopt Mace (click slot)");
+                }
                 case DELETED -> {
-                    inv.setItem(i, null);
-                    removedSomething = true;
+                    e.setCurrentItem(null);
+                    p.sendMessage(plugin.getMessage("invalid-mace-removed"));
                 }
                 default -> {}
             }
         }
 
-        if (removedSomething && notify != null && notify.isOnline()) {
-            notify.sendMessage(plugin.getMessage("invalid-mace-removed"));
+        // Item đang cầm trên cursor
+        ItemStack cursor = e.getCursor();
+        if (cursor != null && cursor.getType() == Material.MACE) {
+            DataManager.MaceAction action = data.processMace(cursor);
+            switch (action) {
+                case ADOPTED -> {
+                    e.setCursor(cursor);
+                    plugin.debug(p.getName() + " → Adopt Mace (cursor)");
+                }
+                case DELETED -> {
+                    e.setCursor(null);
+                    p.sendMessage(plugin.getMessage("invalid-mace-removed"));
+                }
+                default -> {}
+            }
         }
     }
 }
