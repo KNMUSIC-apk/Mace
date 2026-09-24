@@ -19,6 +19,10 @@ commands:
     description: Đồng bộ dữ liệu Mace với thực tế (quét player + chunk).
     usage: /macesync
     permission: macelimiter.admin
+  mace:
+    description: Lệnh quản trị chung của MaceLimiter.
+    usage: /mace reload
+    permission: macelimiter.admin
 
 permissions:
   macelimiter.admin:
