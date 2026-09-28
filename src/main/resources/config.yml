@@ -2,35 +2,35 @@
 #  MaceLimiter - Configuration
 # =========================================================
 
-# Số lượng Mace tối đa được tồn tại trên server.
-# Khi đạt giới hạn, người chơi không thể craft thêm Mace.
-#
-# LƯU Ý: max-maces CHỈ chặn craft. Plugin vẫn tự động adopt
-# (đếm) Mace có sẵn trên server dù vượt quá giới hạn — để
-# phản ánh đúng thực tế.
-max-maces: 10
+# Số lượng Mace tối đa trên server.
+# Chỉ chặn CRAFT — plugin vẫn auto-adopt mọi Mace có sẵn để phản ánh đúng thực tế.
+max-maces: 8
 
-# Bật để xem log debug chi tiết trong console.
-# Tắt khi plugin đã hoạt động ổn định.
+# Bật log debug trong console (dùng khi troubleshoot).
 debug: false
 
-# Tin nhắn (mã màu legacy: &a &c &e &l &o &n ...).
-# Placeholders:
-#   %current%, %max%              -> limit-reached / limit-info
-#   %fake%, %adopted%, %orphans%  -> sync-success
-#   %max%                         -> reload-success
-#   %player%                      -> player-not-found / scan-success
-#   %adopted%, %deleted%          -> scan-success
+# Gộp nhiều thay đổi data rồi ghi 1 lần (giảm disk I/O).
+# Đơn vị: ticks (20 ticks = 1 giây). Khuyến nghị 40-100.
+save-debounce-ticks: 40
+
+# Bật auto-scan toàn server khi plugin enable.
+scan-on-startup: true
+
+# Delay trước khi startup scan chạy (ticks). Tăng nếu server yếu.
+startup-scan-delay-ticks: 40
+
 messages:
   no-permission: "&cBạn không có quyền sử dụng lệnh này."
   limit-reached: "&cServer đã đạt giới hạn Mace! &7(&e%current%&7/&e%max%&7)"
   limit-info: "&eHiện đang có &c%current%&e/&c%max% &eMace trên server."
-  reset-success: "&aĐã reset toàn bộ dữ liệu Mace về 0. Mace cũ sẽ tự động bị xóa khi chạm vào."
+  reset-success: "&aĐã reset toàn bộ dữ liệu Mace về 0."
   sync-start: "&7Đang đồng bộ dữ liệu Mace, vui lòng đợi..."
   sync-success: "&aĐồng bộ xong! &7Xóa &c%fake% &7UUID ảo, tự nhận &a%adopted% &7Mace mới, phát hiện &e%orphans% &7Mace mồ côi. &7Hiện có &c%current%&7/&c%max%&7."
   invalid-mace-removed: "&cMace không hợp lệ đã bị xóa khỏi túi đồ của bạn!"
   reload-success: "&aĐã reload config.yml thành công! Giới hạn Mace hiện tại: &e%max%&a."
-  usage-mace: "&eSử dụng: &c/mace reload &7- Reload lại file config.yml."
-  usage-macescan: "&eSử dụng: &c/macescan <player> &7- Quét inventory 1 player."
+  usage-mace: "&eSử dụng: &c/mace <reload|info|setmax>"
+  usage-macescan: "&eSử dụng: &c/macescan <player|all>"
   player-not-found: "&cKhông tìm thấy player &e%player% &choặc họ không online."
   scan-success: "&aĐã quét &e%player%&a: nhận &a%adopted% &aMace, xóa &c%deleted% &aMace rác. Hiện có &c%current%&a/&c%max%&a."
+  scan-all-success: "&aĐã quét &e%players% &aplayer: nhận &a%adopted% &aMace, xóa &c%deleted% &aMace rác. Hiện có &c%current%&a/&c%max%&a."
+  setmax-success: "&aĐã đổi giới hạn Mace thành &e%max%&a."
