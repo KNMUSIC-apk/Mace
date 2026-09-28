@@ -20,37 +20,35 @@ import org.bukkit.persistence.PersistentDataType;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
-/**
- * Quản lý tập UUID của các Mace đang tồn tại trên server.
- *
- * Thread-safe: dùng ConcurrentHashMap.newKeySet() cho HashSet<UUID>.
- * File I/O lock bằng saveLock.
- *
- * Core: processMace() xử lý ADOPT / DELETE / KEEP cho 1 ItemStack.
- */
 public class DataManager {
 
-    public enum MaceAction {
-        NONE,       // Không thay đổi gì
-        ADOPTED,    // Đã gắn PDC + thêm vào data (caller cần write-back)
-        DELETED     // Mace orphan, đã set amount = 0 (caller cần write-back)
-    }
+    public enum MaceAction { NONE, ADOPTED, DELETED }
 
-    /** Kết quả scan 1 inventory. */
     public static class ScanResult {
         public int adopted = 0;
         public int deleted = 0;
     }
 
+    public static class SyncResult {
+        public int fakeRemoved = 0;
+        public int adopted = 0;
+        public int orphans = 0;
+    }
+
     private final MaceLimiter plugin;
     private final Set<UUID> maces = ConcurrentHashMap.newKeySet();
     private final Object saveLock = new Object();
+
+    // Debounce save
+    private volatile boolean savePending = false;
+    private final Object pendingLock = new Object();
 
     private File file;
     private YamlConfiguration config;
@@ -86,13 +84,48 @@ public class DataManager {
         List<String> list = config.getStringList("maces");
         for (String s : list) {
             if (s == null || s.isEmpty()) continue;
-            try {
-                maces.add(UUID.fromString(s));
-            } catch (IllegalArgumentException ignored) {}
+            try { maces.add(UUID.fromString(s)); }
+            catch (IllegalArgumentException ignored) {}
         }
     }
 
-    public void save() {
+    /**
+     * Ghi file ngay lập tức (blocking, main thread).
+     * Dùng cho onDisable hoặc admin commands.
+     */
+    public void flushAndSave() {
+        synchronized (pendingLock) { savePending = false; }
+        saveNow();
+    }
+
+    /**
+     * Yêu cầu save — sẽ được debounce (gộp nhiều thay đổi trong 1 khoảng ngắn).
+     * Dùng cho add/remove/processInventory (được gọi từ event).
+     */
+    public void markDirty() {
+        synchronized (pendingLock) {
+            if (savePending) return;
+            savePending = true;
+        }
+
+        if (!plugin.isEnabled()) {
+            // Plugin đang disable → save ngay để không mất data
+            saveNow();
+            return;
+        }
+
+        try {
+            Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                synchronized (pendingLock) { savePending = false; }
+                saveNow();
+            }, plugin.getSaveDebounceTicks());
+        } catch (Throwable t) {
+            // Fallback: save ngay nếu scheduler không khả dụng
+            saveNow();
+        }
+    }
+
+    private void saveNow() {
         synchronized (saveLock) {
             if (config == null || file == null) return;
             List<String> out = new ArrayList<>(maces.size());
@@ -112,23 +145,25 @@ public class DataManager {
 
     public int getCount() { return maces.size(); }
     public boolean contains(UUID uuid) { return uuid != null && maces.contains(uuid); }
-    public Set<UUID> getMaces() { return maces; }
+
+    /** Trả về unmodifiable set — không cho phép caller sửa. */
+    public Set<UUID> getMaces() { return Collections.unmodifiableSet(maces); }
 
     public void add(UUID uuid) {
-        if (uuid != null && maces.add(uuid)) save();
+        if (uuid != null && maces.add(uuid)) markDirty();
     }
 
     public void remove(UUID uuid) {
-        if (uuid != null && maces.remove(uuid)) save();
+        if (uuid != null && maces.remove(uuid)) markDirty();
     }
 
     public void reset() {
         maces.clear();
-        save();
+        flushAndSave();
     }
 
     // ============================================================
-    // PDC HELPERS — Null-safe
+    // PDC HELPERS
     // ============================================================
 
     public UUID extractMaceUUID(ItemStack stack) {
@@ -149,11 +184,8 @@ public class DataManager {
         }
         if (raw == null) return null;
 
-        try {
-            return UUID.fromString(raw);
-        } catch (IllegalArgumentException e) {
-            return null;
-        }
+        try { return UUID.fromString(raw); }
+        catch (IllegalArgumentException e) { return null; }
     }
 
     public boolean tagMace(ItemStack stack, UUID uuid) {
@@ -176,7 +208,7 @@ public class DataManager {
     }
 
     // ============================================================
-    // CORE: XỬ LÝ 1 MACE
+    // CORE
     // ============================================================
 
     public MaceAction processMace(ItemStack stack) {
@@ -186,7 +218,6 @@ public class DataManager {
         UUID uuid = extractMaceUUID(stack);
 
         if (uuid == null) {
-            // Untagged → ADOPT
             UUID newUuid = UUID.randomUUID();
             if (tagMace(stack, newUuid)) {
                 add(newUuid);
@@ -197,7 +228,6 @@ public class DataManager {
         }
 
         if (!maces.contains(uuid)) {
-            // Orphan (từ /macereset hoặc plugin khác)
             stack.setAmount(0);
             return MaceAction.DELETED;
         }
@@ -205,16 +235,6 @@ public class DataManager {
         return MaceAction.NONE;
     }
 
-    // ============================================================
-    // PROCESS 1 INVENTORY — Dùng chung cho Listener & Command
-    // ============================================================
-
-    /**
-     * Duyệt toàn bộ inventory, adopt Mace untagged + xóa Mace orphan.
-     * Write-back trực tiếp vào inventory.
-     *
-     * @return ScanResult {adopted, deleted}
-     */
     public ScanResult processInventory(Inventory inv) {
         ScanResult result = new ScanResult();
         if (inv == null) return result;
@@ -244,20 +264,18 @@ public class DataManager {
     }
 
     // ============================================================
-    // SYNC TOÀN SERVER
+    // SYNC
     // ============================================================
 
     public SyncResult syncWithServer(boolean removeFake) {
         SyncResult result = new SyncResult();
         Set<UUID> found = new HashSet<>();
 
-        // 1. Player online
         for (Player p : Bukkit.getOnlinePlayers()) {
             scanInventory(p.getInventory(), found, result);
             scanInventory(p.getEnderChest(), found, result);
         }
 
-        // 2. Chunk đang load
         for (World w : Bukkit.getWorlds()) {
             for (Chunk c : w.getLoadedChunks()) {
                 for (Entity e : c.getEntities()) {
@@ -281,7 +299,6 @@ public class DataManager {
             }
         }
 
-        // 3. Loại bỏ UUID ảo (chỉ khi removeFake)
         if (removeFake) {
             for (UUID u : new ArrayList<>(maces)) {
                 if (!found.contains(u)) {
@@ -291,13 +308,11 @@ public class DataManager {
             }
         }
 
-        if (result.adopted > 0 || result.fakeRemoved > 0) save();
+        if (result.adopted > 0 || result.fakeRemoved > 0) markDirty();
         return result;
     }
 
-    public SyncResult syncWithServer() {
-        return syncWithServer(true);
-    }
+    public SyncResult syncWithServer() { return syncWithServer(true); }
 
     private void scanInventory(Inventory inv, Set<UUID> found, SyncResult result) {
         if (inv == null) return;
@@ -320,11 +335,8 @@ public class DataManager {
         if (stack.getType() == Material.MACE) {
             UUID uuid = extractMaceUUID(stack);
             if (uuid != null) {
-                if (maces.contains(uuid)) {
-                    found.add(uuid);
-                } else {
-                    result.orphans++;
-                }
+                if (maces.contains(uuid)) found.add(uuid);
+                else result.orphans++;
             } else {
                 UUID newUuid = UUID.randomUUID();
                 if (tagMace(stack, newUuid)) {
@@ -355,11 +367,5 @@ public class DataManager {
         }
 
         return changed;
-    }
-
-    public static class SyncResult {
-        public int fakeRemoved = 0;
-        public int adopted = 0;
-        public int orphans = 0;
     }
 }
