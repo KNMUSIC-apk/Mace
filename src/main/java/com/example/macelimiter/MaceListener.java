@@ -146,17 +146,20 @@ public class MaceListener implements Listener {
     }
 
     /**
-     * ⚡ FIX #3: EntityRemoveEvent (Paper 1.19.4+) — catch-all.
-     * Bắt mọi trường hợp item bị remove (void, /kill, plugin khác, discard...).
-     * BỎ QUA cause UNLOADED (chunk unload → item sẽ quay lại khi chunk load lại).
+     * Catch-all: bắt mọi trường hợp item bị remove (void, /kill, plugin khác...).
+     * BỎ QUA cause UNLOAD (chunk unload — item sẽ quay lại khi chunk load).
+     *
+     * LƯU Ý: EntityRemoveEvent bị Paper đánh dấu deprecated từ 1.21.3+,
+     * nhưng vẫn hoạt động tốt. Suppress warning để build sạch.
      */
+    @SuppressWarnings("removal")
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onEntityRemove(EntityRemoveEvent e) {
         if (!(e.getEntity() instanceof Item itemEntity)) return;
 
-        // Bỏ qua chunk unload — item sẽ quay lại
+        // Bỏ qua chunk unload — item sẽ quay lại khi chunk load lại
         try {
-            if (e.getCause() == EntityRemoveEvent.Cause.UNLOADED) return;
+            if (e.getCause() == EntityRemoveEvent.Cause.UNLOAD) return;
         } catch (Throwable ignored) {}
 
         ItemStack stack;
@@ -164,12 +167,22 @@ public class MaceListener implements Listener {
         UUID uuid = data.extractMaceUUID(stack);
         if (uuid != null) {
             data.remove(uuid);
-            plugin.debug("Remove Mace (EntityRemoveEvent/" + e.getCause() + ") → count = " + data.getCount());
+            plugin.debug("Remove Mace (EntityRemoveEvent/"
+                    + safeCauseName(e) + ") → count = " + data.getCount());
+        }
+    }
+
+    @SuppressWarnings("removal")
+    private String safeCauseName(EntityRemoveEvent e) {
+        try {
+            return String.valueOf(e.getCause());
+        } catch (Throwable t) {
+            return "UNKNOWN";
         }
     }
 
     /**
-     * ⚡ FIX #4: Adopt khi player nhặt Mace từ ground.
+     * Adopt khi player nhặt Mace từ ground.
      */
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onPickup(EntityPickupItemEvent e) {
@@ -180,9 +193,9 @@ public class MaceListener implements Listener {
 
         UUID uuid = data.extractMaceUUID(stack);
         if (uuid == null) {
-            // Untagged → đánh dấu cần adopt sau khi vào balo
+            // Untagged → scan lại balo 1 tick sau khi pickup hoàn tất
             Bukkit.getScheduler().runTaskLater(plugin, () -> {
-                if (!p.isOnline()) return;
+                if (!plugin.isEnabled() || !p.isOnline()) return;
                 DataManager.ScanResult r = data.processInventory(p.getInventory());
                 if (r.adopted > 0) {
                     plugin.debug(p.getName() + " → Adopt " + r.adopted + " Mace (pickup)");
@@ -277,9 +290,6 @@ public class MaceListener implements Listener {
         if (r.deleted > 0) p.sendMessage(plugin.getMessage("invalid-mace-removed"));
     }
 
-    /**
-     * ⚡ FIX #2: Priority HIGHEST (không phải MONITOR).
-     */
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onInventoryClick(InventoryClickEvent e) {
         if (!(e.getWhoClicked() instanceof Player p)) return;
@@ -323,9 +333,6 @@ public class MaceListener implements Listener {
         handleCreativeDestroy(e, p);
     }
 
-    /**
-     * ⚡ NEW: Xử lý drag item.
-     */
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onInventoryDrag(InventoryDragEvent e) {
         if (!(e.getWhoClicked() instanceof Player p)) return;
@@ -344,7 +351,6 @@ public class MaceListener implements Listener {
                 p.sendMessage(plugin.getMessage("invalid-mace-removed"));
             }
             default -> {
-                // Đã có UUID hợp lệ, nhưng có thể item trong slot cũng cần adopt
                 for (Map.Entry<Integer, ItemStack> entry : e.getNewItems().entrySet()) {
                     ItemStack s = entry.getValue();
                     if (s == null || s.getType() != Material.MACE) continue;
@@ -357,9 +363,6 @@ public class MaceListener implements Listener {
         }
     }
 
-    /**
-     * ⚡ FIX: Priority MONITOR → vẫn OK vì không modify event.
-     */
     @EventHandler(priority = EventPriority.MONITOR)
     public void onInventoryClose(InventoryCloseEvent e) {
         if (!(e.getPlayer() instanceof Player player)) return;
