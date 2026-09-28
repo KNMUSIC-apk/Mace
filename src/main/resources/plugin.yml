@@ -21,14 +21,17 @@ commands:
     permission: macelimiter.admin
   mace:
     description: Lệnh quản trị chung của MaceLimiter.
-    usage: /mace reload
+    usage: /mace <reload|info|setmax>
     permission: macelimiter.admin
   macescan:
-    description: Force scan 1 player cụ thể (inventory + ender chest).
-    usage: /macescan <player>
+    description: Force scan 1 player hoặc all.
+    usage: /macescan <player|all>
     permission: macelimiter.admin
 
 permissions:
   macelimiter.admin:
     description: Quyền quản trị plugin MaceLimiter.
     default: op
+  macelimiter.bypass:
+    description: Bỏ qua giới hạn Mace (vẫn được craft dù đã đầy).
+    default: false
