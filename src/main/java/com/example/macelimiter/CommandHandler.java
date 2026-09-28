@@ -18,7 +18,6 @@ import java.util.stream.Stream;
 public class CommandHandler implements CommandExecutor, TabCompleter {
 
     private static final String PERM = "macelimiter.admin";
-
     private final MaceLimiter plugin;
 
     public CommandHandler(MaceLimiter plugin) {
@@ -35,7 +34,6 @@ public class CommandHandler implements CommandExecutor, TabCompleter {
         }
 
         switch (command.getName().toLowerCase()) {
-
             case "macelimit" -> {
                 int cur = plugin.getDataManager().getCount();
                 int max = plugin.getMaxMaces();
@@ -43,13 +41,11 @@ public class CommandHandler implements CommandExecutor, TabCompleter {
                         "%current%", String.valueOf(cur),
                         "%max%", String.valueOf(max)));
             }
-
             case "macereset" -> {
                 plugin.getDataManager().reset();
                 sender.sendMessage(plugin.getMessage("reset-success"));
-                plugin.getLogger().info(sender.getName() + " đã reset toàn bộ dữ liệu Mace.");
+                plugin.getLogger().info(sender.getName() + " đã reset data Mace.");
             }
-
             case "macesync" -> {
                 sender.sendMessage(plugin.getMessage("sync-start"));
                 DataManager.SyncResult r = plugin.getDataManager().syncWithServer(true);
@@ -61,24 +57,34 @@ public class CommandHandler implements CommandExecutor, TabCompleter {
                         "%current%", String.valueOf(cur),
                         "%max%",     String.valueOf(plugin.getMaxMaces())));
             }
-
             case "macescan" -> handleMaceScan(sender, args);
-
             case "mace" -> handleMaceCommand(sender, args);
-
-            default -> {
-                return false;
-            }
+            default -> { return false; }
         }
         return true;
     }
 
-    /**
-     * /macescan <player> — Force scan 1 player (inventory + ender chest).
-     */
     private void handleMaceScan(CommandSender sender, String[] args) {
         if (args.length < 1) {
             sender.sendMessage(plugin.getMessage("usage-macescan"));
+            return;
+        }
+
+        // /macescan all
+        if (args[0].equalsIgnoreCase("all")) {
+            int totalAdopted = 0, totalDeleted = 0;
+            for (Player p : Bukkit.getOnlinePlayers()) {
+                DataManager.ScanResult r1 = plugin.getDataManager().processInventory(p.getInventory());
+                DataManager.ScanResult r2 = plugin.getDataManager().processInventory(p.getEnderChest());
+                totalAdopted += r1.adopted + r2.adopted;
+                totalDeleted += r1.deleted + r2.deleted;
+            }
+            sender.sendMessage(plugin.getMessage("scan-all-success",
+                    "%players%", String.valueOf(Bukkit.getOnlinePlayers().size()),
+                    "%adopted%", String.valueOf(totalAdopted),
+                    "%deleted%", String.valueOf(totalDeleted),
+                    "%current%", String.valueOf(plugin.getDataManager().getCount()),
+                    "%max%",     String.valueOf(plugin.getMaxMaces())));
             return;
         }
 
@@ -92,20 +98,14 @@ public class CommandHandler implements CommandExecutor, TabCompleter {
         DataManager.ScanResult r1 = plugin.getDataManager().processInventory(target.getInventory());
         DataManager.ScanResult r2 = plugin.getDataManager().processInventory(target.getEnderChest());
 
-        int adopted = r1.adopted + r2.adopted;
-        int deleted = r1.deleted + r2.deleted;
-
         sender.sendMessage(plugin.getMessage("scan-success",
                 "%player%",  target.getName(),
-                "%adopted%", String.valueOf(adopted),
-                "%deleted%", String.valueOf(deleted),
+                "%adopted%", String.valueOf(r1.adopted + r2.adopted),
+                "%deleted%", String.valueOf(r1.deleted + r2.deleted),
                 "%current%", String.valueOf(plugin.getDataManager().getCount()),
                 "%max%",     String.valueOf(plugin.getMaxMaces())));
     }
 
-    /**
-     * /mace <subcommand>
-     */
     private void handleMaceCommand(CommandSender sender, String[] args) {
         if (args.length == 0) {
             sender.sendMessage(plugin.getMessage("usage-mace"));
@@ -119,13 +119,33 @@ public class CommandHandler implements CommandExecutor, TabCompleter {
                         "%max%", String.valueOf(plugin.getMaxMaces())));
                 plugin.getLogger().info(sender.getName() + " đã reload config.yml.");
             }
+            case "info" -> {
+                int cur = plugin.getDataManager().getCount();
+                int max = plugin.getMaxMaces();
+                sender.sendMessage("§6=== MaceLimiter Info ===");
+                sender.sendMessage("§eSố Mace hiện có: §c" + cur + "§e/§c" + max);
+                sender.sendMessage("§eDebug: §c" + plugin.isDebug());
+                sender.sendMessage("§eSave debounce: §c" + plugin.getSaveDebounceTicks() + " ticks");
+                sender.sendMessage("§eUUID đang track: §c" + plugin.getDataManager().getMaces().size());
+            }
+            case "setmax" -> {
+                if (args.length < 2) {
+                    sender.sendMessage("§cSử dụng: /mace setmax <số>");
+                    return;
+                }
+                try {
+                    int val = Integer.parseInt(args[1]);
+                    if (val < 0) throw new NumberFormatException();
+                    plugin.setMaxMaces(val);
+                    sender.sendMessage(plugin.getMessage("setmax-success",
+                            "%max%", String.valueOf(val)));
+                } catch (NumberFormatException ex) {
+                    sender.sendMessage("§cGiá trị không hợp lệ: " + args[1]);
+                }
+            }
             default -> sender.sendMessage(plugin.getMessage("usage-mace"));
         }
     }
-
-    // ============================================================
-    // TAB COMPLETER
-    // ============================================================
 
     @Override
     public @Nullable List<String> onTabComplete(@NotNull CommandSender sender,
@@ -137,23 +157,24 @@ public class CommandHandler implements CommandExecutor, TabCompleter {
         String cmd = command.getName().toLowerCase();
 
         if (cmd.equals("mace") && args.length == 1) {
-            String partial = args[0].toLowerCase();
-            return Stream.of("reload")
-                    .filter(s -> s.startsWith(partial))
+            return Stream.of("reload", "info", "setmax")
+                    .filter(s -> s.startsWith(args[0].toLowerCase()))
                     .collect(Collectors.toList());
         }
-
+        if (cmd.equals("mace") && args.length == 2 && args[0].equalsIgnoreCase("setmax")) {
+            return Stream.of("1", "5", "8", "16", "32", "64")
+                    .filter(s -> s.startsWith(args[1]))
+                    .collect(Collectors.toList());
+        }
         if (cmd.equals("macescan") && args.length == 1) {
             String partial = args[0].toLowerCase();
             List<String> names = new ArrayList<>();
+            names.add("all");
             for (Player p : Bukkit.getOnlinePlayers()) {
-                if (p.getName().toLowerCase().startsWith(partial)) {
-                    names.add(p.getName());
-                }
+                if (p.getName().toLowerCase().startsWith(partial)) names.add(p.getName());
             }
             return names;
         }
-
         return Collections.emptyList();
     }
 }
